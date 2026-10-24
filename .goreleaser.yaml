@@ -1,0 +1,81 @@
+version: 2
+
+project_name: llm-fallback-router
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: llm-router
+    main: ./cmd/llm-router
+    binary: llm-router
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/blackcowmoo/llm-fallback-router/internal/version.Version={{ .Version }}
+      - -X github.com/blackcowmoo/llm-fallback-router/internal/version.Commit={{ .Commit }}
+      - -X github.com/blackcowmoo/llm-fallback-router/internal/version.BuildDate={{ .Date }}
+
+  - id: mock-llm
+    main: ./cmd/mock-llm
+    binary: mock-llm
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - LICENSE
+      - README.md
+      - examples/*.yaml
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  draft: false
+  prerelease: auto
+  name_template: "{{ .ProjectName }} {{ .Tag }}"
