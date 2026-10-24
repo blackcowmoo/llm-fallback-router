@@ -1,0 +1,10 @@
+/bin/
+/dist/
+/coverage.out
+*.test
+*.prof
+.env
+.env.*
+!.env.example
+*.local.yaml
+.DS_Store

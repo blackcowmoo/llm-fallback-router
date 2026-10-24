@@ -1,0 +1,78 @@
+name: llm-fallback-router
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mock-a:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    environment:
+      MOCK_NAME: mock-a
+      MOCK_ADDR: ":8001"
+      MOCK_MODEL: mock-mock-a
+      MOCK_LATENCY: 300ms
+      MOCK_BASE_ACTIVE: "0"
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8001/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mock-b:
+    build:
+      context: .
+      dockerfile: Dockerfile.mock
+    environment:
+      MOCK_NAME: mock-b
+      MOCK_ADDR: ":8001"
+      MOCK_MODEL: mock-mock-b
+      MOCK_LATENCY: 300ms
+      # A permanent reported load makes metric-driven routing visible in the
+      # demo: mock-a should win while it is healthy.
+      MOCK_BASE_ACTIVE: "3"
+    ports:
+      - "8002:8001"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8001/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  router:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      INSTANCE_ID: router-compose
+      REDIS_ADDR: redis:6379
+      MOCK_A_URL: http://mock-a:8001
+      MOCK_A_METRICS_URL: http://mock-a:8001/metrics
+      MOCK_B_URL: http://mock-b:8001
+      MOCK_B_METRICS_URL: http://mock-b:8001/dedicated-metrics
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mock-a:
+        condition: service_healthy
+      mock-b:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/llm-router", "healthcheck", "--url", "http://127.0.0.1:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      start_period: 5s
+      retries: 5

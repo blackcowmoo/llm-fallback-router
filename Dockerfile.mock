@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+
+ARG GO_VERSION=1.24
+FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-alpine AS build
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY . .
+
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags "-s -w" -o /out/mock-llm ./cmd/mock-llm
+
+FROM alpine:3.22
+
+RUN apk add --no-cache ca-certificates wget \
+    && adduser -D -H -u 10001 mock
+
+COPY --from=build /out/mock-llm /usr/local/bin/mock-llm
+
+USER mock
+EXPOSE 8001
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=3s --retries=3 \
+    CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8001/healthz"]
+
+ENTRYPOINT ["/usr/local/bin/mock-llm"]

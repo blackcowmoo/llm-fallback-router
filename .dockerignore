@@ -1,0 +1,13 @@
+.git
+.github
+.gitignore
+.dockerignore
+bin
+dist
+coverage.out
+*.out
+*.test
+README.md
+docker-compose.yml
+scripts
+docs

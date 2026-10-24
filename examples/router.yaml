@@ -1,0 +1,99 @@
+# Example configuration for the Docker Compose demo and local development.
+#
+# Environment references use dollar-brace syntax, optionally with a
+# :-default fallback. Unset variables without a default are rejected at
+# startup.
+server:
+  listen: ":8080"
+  instance_id: "${INSTANCE_ID:-router-dev}"
+  read_header_timeout: 10s
+  idle_timeout: 120s
+  shutdown_timeout: 20s
+  max_header_bytes: 1048576
+  access_log: true
+  # Set a token to require "Authorization: Bearer <token>" on /admin/state.
+  admin_token: "${ADMIN_TOKEN:-}"
+
+routing:
+  # least_active, weighted_least_active, or round_robin
+  strategy: weighted_least_active
+  # max, sum, reported, or observed
+  combine: max
+  failure_threshold: 3
+  recovery_interval: 15s
+  fail_open: true
+  reject_when_saturated: false
+  response_header_timeout: 300s
+  idle_conn_timeout: 90s
+  max_idle_conns_per_host: 100
+  retry:
+    max_attempts: 2
+    buffer_limit_bytes: 33554432
+    on_status: [429, 502, 503, 504]
+
+cache:
+  metrics_ttl: 2s
+  metrics_stale_ttl: 30s
+  # Share scraped readings through Redis so a newly started router can serve
+  # immediately when an upstream metrics endpoint is temporarily unavailable.
+  shared: true
+  snapshot_ttl: 100ms
+
+redis:
+  address: "${REDIS_ADDR:-127.0.0.1:6379}"
+  username: "${REDIS_USERNAME:-}"
+  password: "${REDIS_PASSWORD:-}"
+  db: 0
+  key_prefix: "llm-router:"
+  instance_ttl: 30s
+  heartbeat_interval: 10s
+  sync_interval: 100ms
+  operation_timeout: 250ms
+  dial_timeout: 2s
+  pool_size: 20
+  # When true the router refuses to start if Redis is unreachable. When false
+  # it keeps serving with process-local counts and reconnects automatically.
+  required: false
+  tls:
+    enabled: false
+    ca_file: ""
+    insecure_skip_verify: false
+
+upstreams:
+  - name: mock-a
+    url: "${MOCK_A_URL:-http://127.0.0.1:8001}"
+    capacity: 1.0
+    max_active: 8
+    headers:
+      X-Router-Backend: mock-a
+    metrics:
+      type: prometheus
+      url: "${MOCK_A_METRICS_URL:-http://127.0.0.1:8001/metrics}"
+      interval: 1s
+      timeout: 500ms
+      headers: {}
+      active_requests:
+        metric: mock_llm_active_requests
+        labels:
+          model: mock-mock-a
+        aggregation: sum
+      waiting_requests:
+        metric: mock_llm_queued_requests
+        labels:
+          model: mock-mock-a
+        aggregation: sum
+
+  - name: mock-b
+    url: "${MOCK_B_URL:-http://127.0.0.1:8002}"
+    capacity: 1.0
+    max_active: 8
+    headers:
+      X-Router-Backend: mock-b
+    metrics:
+      # A dedicated JSON metrics endpoint can be used instead of Prometheus.
+      type: json
+      url: "${MOCK_B_METRICS_URL:-http://127.0.0.1:8002/dedicated-metrics}"
+      interval: 1s
+      timeout: 500ms
+      active_requests_field: active_requests
+      waiting_requests_field: waiting_requests
